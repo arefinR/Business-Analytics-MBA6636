@@ -2,7 +2,7 @@
 
 ### Assignment A03: Resampling Methods
 
-2 files attaches:
+2 files attached:
 
 CV and bootstrapping on Regression Model (RMD) 
 
