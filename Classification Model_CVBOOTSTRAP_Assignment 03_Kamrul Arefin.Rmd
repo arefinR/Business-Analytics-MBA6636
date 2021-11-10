@@ -1,0 +1,279 @@
+---
+title: "Cross Validation and Bootstrapping on Classification Model"
+author: "kamrul Arefin"
+date: "11/9/2021"
+output: html_document
+---
+
+```{r, include=FALSE, echo=FALSE, message=FALSE}
+library(readr)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(olsrr)
+library(rsample)
+library(parsnip)
+library(yardstick)
+library(caret)
+library(olsrr)
+library(recipes)
+library(workflows)
+library(tune)
+
+
+
+
+bank <- read.csv("bank-additional-full.csv", header = TRUE, sep = ";", stringsAsFactors = FALSE,
+   na.strings = c("NA", "N/A", "unknown", "NULL", ".P"))
+bank<- na.omit(bank)
+bank<- na.exclude(bank)
+str(bank)
+bank$y <- as.factor(bank$y)
+bank$marital <- as.factor(bank$marital)
+bank$education <- as.factor(bank$education)
+bank$default <- as.factor(bank$default)
+bank$housing <- as.factor(bank$housing)
+bank$loan <- as.factor(bank$loan)
+bank$contact <- as.factor(bank$contact)
+bank$month <- as.factor(bank$month)
+bank$day_of_week <- as.factor(bank$day_of_week)
+bank$poutcome <- as.factor(bank$poutcome)
+
+
+```
+
+
+# Executive Summary
+
+
+We used three Cross Validation Techniques:
+
+* Method 1: Validation Set Approach
+
+* Method 3: K-fold Corss Validation
+
+
+Validation Set Approach based model assessment:
+
+Based on Validation Set Approach confusion matrix ur model correctly classified 6716 rows or results. Based on accuracy metric, the model provides accuracy of 88% Of people who opened bank account. Based on sensitivity metric of people who opened bank account, our model predicted 98% of them correctly.
+
+
+K-fold cross-validation method based model assessment:
+
+The model provides average estimate on the following metrics based on 10 folds: 
+
+roc_auc		78%
+sens		  97%		
+spec  	  18%		
+
+
+We used 100 resamples to test this model based on bootstrapping. It can be seen that standard error of maximum of the parameters in the model are low. Also following paramaters have p-value less than 0.05 and thus are significantly different from zero. We can build a model keeping these parameters as they are the strongest predictor of the outcome variable:
+
+* jobblue-collar
+* jobservices
+* jobstudent 
+* contacttelephone
+* Month: March, May, June, July and September
+* Day of Week
+* Consumer Price Index
+* nr employed
+
+------------------------------------------------------------------------------------------------------------
+
+
+
+# Cross Validation
+
+Cross validation is a method that uses training data to provide multiple estimates of model performance. When trying different model types on data, it is important to study their performance profile to help decide which model type performs consistently well.
+
+
+## Method 1: Validation set Approach
+
+
+### Data Resampling
+
+Now we will first create a 75/25 split to train and test the data
+
+```{r, warning=FALSE}
+
+set.seed(1000)
+account.split <- initial_split(bank, prop = 0.75,strata=y)
+account_training <- account.split%>% training()
+account_testing <- account.split%>% testing()
+```
+
+
+### Now we will create the model:
+
+```{r, warning=FALSE}
+
+logistic_model<- logistic_reg()%>%set_engine('glm')%>%set_mode('classification')
+
+account_fit<- logistic_model%>%fit(y ~age+job+marital+education+default+housing+loan+contact+month+day_of_week+campaign+cons.price.idx+nr.employed, data= account_training)
+
+
+```
+
+
+### Predicting Outcome Categories Based on Testing Data
+
+
+```{r, warning=FALSE}
+account_pred<- account_fit%>% predict(new_data=account_testing ,type= 'class' )
+account_pred_prob<- account_fit%>% predict(new_data=account_testing ,type= 'prob' )
+
+account_results<- account_testing%>% select(y)%>%bind_cols(account_pred,account_pred_prob )
+
+
+```
+
+
+## Assessing Model Performance
+
+
+Now we will compare the performance of our model.
+
+
+### Confusion Matrix
+
+```{r}
+
+conf_mat(account_results, truth=y,estimate=.pred_class)
+
+
+```
+
+* Our model correctly classified 6716 rows or results
+
+
+### Heatmap Plot
+
+```{r}
+conf_mat(account_results, truth=y,estimate=.pred_class)%>% autoplot(type= 'heatmap')
+
+
+```
+
+### Mosaic Plot
+
+```{r}
+conf_mat(account_results, truth=y,estimate=.pred_class)%>% autoplot(type= 'mosaic')
+
+```
+
+
+
+### Accuracy
+
+```{r}
+accuracy(account_results, truth=y,estimate=.pred_class)
+
+```
+
+The model provides accuracy of 88%
+
+
+### Sensitivity
+
+```{r}
+sens(account_results, truth=y,estimate=.pred_class)
+
+```
+
+Of people who opened bank account, our model predicted 98% of them correctly. 
+
+
+
+
+### Method 2: K fold Cross Validation
+
+The k-fold cross-validation method evaluates the model performance on different subset of the training data and then calculate the average prediction error rate.
+
+As a rule of thumb, we will use number of folds, v=10
+
+```{r,include=FALSE, echo=FALSE, message=FALSE}
+set.seed(1000)
+
+
+model_kfold <- vfold_cv(account_training, v = 10,
+                       strata = y)
+
+
+
+```
+
+Our perfromance metrics for K-fold cross validation are:
+
+ROC AUC
+Sensitivity and
+Specificity
+
+```{r}
+
+account_metrics<- metric_set(roc_auc,sens,spec)
+
+
+```
+
+We estimated the average of the metrics based on iteration on each folds. The average metrics based on K-fold cross validation are following:
+
+
+```{r, echo=FALSE}
+
+account_recipe <- recipe(y ~age+job+marital+education+default+housing+loan+contact+month+day_of_week+campaign+cons.price.idx+nr.employed, data= account_training) %>% 
+  # Correlation filter
+  step_corr(all_numeric(), threshold = 0.85) %>% 
+  # Normalize numeric predictors
+  step_normalize(all_numeric()) %>% 
+  # Create dummy variables
+  step_dummy(all_nominal(), -all_outcomes())
+
+
+account_model <- logistic_reg() %>% 
+  # Specify the engine
+  set_engine('glm') %>% 
+  # Specify the mode
+  set_mode('classification')
+
+# Create workflow
+account_wkfl <- workflow() %>% 
+  # Add model
+  add_model(account_model) %>% 
+  # Add recipe
+  add_recipe(account_recipe)
+
+# Fit resamples
+account_rs <- account_wkfl %>% 
+  fit_resamples(resamples = model_kfold,
+                metrics = account_metrics)
+
+# View performance metrics
+account_rs %>% 
+  collect_metrics()
+
+```
+
+
+# Bootstrapping Method
+
+The bootstrap method in this case is used for evaluating a predictive model accuracy, as well as, for measuring the uncertainty associated with a given statistical estimator. It can be seen that standard error of maximum of the parameters are low. Also following paramaters have p-value less than 0.05 and thus are significantly different from zero. We can build a model keeping only these parameters as they are the strongest predictor of the outcome variable:
+
+* jobblue-collar
+* jobservices
+* jobstudent 
+* contacttelephone
+* Month: March, May, June, July and September
+* Day of Week
+* Consumer Price Index
+* nr employed
+
+
+
+```{r,echo=FALSE,warning=FALSE}
+train.control <- trainControl(method = "boot", number = 100)
+# Train the model
+model_boot <- train(y ~age+job+marital+education+default+housing+loan+contact+month+day_of_week+campaign+cons.price.idx+nr.employed, data= account_training, method = "glm", trControl = train.control)
+
+summary(model_boot)
+```
+

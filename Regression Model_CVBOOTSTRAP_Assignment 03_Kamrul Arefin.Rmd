@@ -1,0 +1,288 @@
+---
+title: "Cross Validation and Boostrap on Regression Model"
+author: "Kamrul Arefin"
+date: "11/8/2021"
+output: html_document
+---
+```{r, include=FALSE, echo=FALSE, message=FALSE}
+library(readr)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(olsrr)
+library(rsample)
+library(parsnip)
+library(yardstick)
+library(caret)
+library(olsrr)
+
+diamond.data<- read.csv("MBA6636_SM21_Professor_Proposes_Data.csv")
+diamond.data1<- na.exclude(diamond.data)
+diamond.data1<- na.omit(diamond.data)
+diamond.data1$Colour<- as.factor(diamond.data1$Colour)
+diamond.data1$Clarity<- as.factor(diamond.data1$Clarity)
+diamond.data1$Cut<- as.factor(diamond.data1$Cut)
+diamond.data1$Certification<- as.factor(diamond.data1$Certification)
+diamond.data1$Polish<- as.factor(diamond.data1$Polish)
+diamond.data1$Symmetry<- as.factor(diamond.data1$Symmetry)
+diamond.data1$Price<- parse_number(diamond.data1$Price)
+diamond.data1<- data.frame(diamond.data1)
+
+```
+
+# Executive Summary
+
+
+By univariate and bivariate analysis in the previous exercise, we determined the following as the best predictors of the dependent variable.
+
+* *Carat*
+* *Colour: faintyellow*
+* *Clarity: SI1 and SI2*
+* *Certification: GIA and EGL*
+* *Polish: V and I*
+* *Cut: V and X*
+* *Symmetry: V and G*
+
+By trial and error for finding the model with lowest multicollinearity we found that following variables have the highest predictability and produced lowest multicollinearity in the model. So we keep the following variables.
+
+* *Carat*
+* *Colour*
+* *Clarity*
+* *Certification*
+
+
+We used three Cross Validation Techniques:
+
+* Method 1: Validation set Approach
+
+* Method 2: Leave one out cross validation - LOOCV
+
+* Method 3: K-fold Corss Validation
+
+
+By "Cross-Validation" by three models we have got the following results for RMSE:
+
+* Method 1: Validation set Approach: 124
+
+* Method 2: Leave one out cross validation - LOOCV: 144
+
+* Method 3: K-fold Cross Validation: 146
+
+
+
+We also used Bootstrap resampling techniques to estimate model adccuray and took 100 resmaples. Based on bootstrap resampling method the model RMSE is 153
+
+
+-----------------------------------------------------------------------------------------------------------
+
+
+
+# Cross Validation and Bootsrap on Regression Model
+
+
+```{r, include=FALSE, echo=FALSE, message=FALSE}
+
+train<- diamond.data1%>%mutate(Certification== (alist("GIA", "EGL")),Clarity==(alist("SI1", "SI2")),Colour==(alist("J","K")), Polish==(alist("V","I")),Cut==(alist("V","X")),Symmetry==(alist("V","G")))
+
+```
+
+
+Based on the following variables we built our model previously
+
+```{r, include=FALSE, echo=FALSE, message=FALSE}
+
+model_train_trim <- lm(Price~Carat+Certification+Colour+Clarity+0, data = train)
+
+```
+
+```{r}
+summary(model_train_trim)
+
+```
+
+We can see that all of the variable parameter p-values are less than 0.05. That means all the parameters are significantly different from zero.
+
+We tried to remove some outliers from our data. We reached to the following final model after removing outliers from data:
+
+```{r, echo=FALSE, message=FALSE}
+
+outlier_plot <- ols_plot_cooksd_bar(model_train_trim)
+data_outlier_plot <- outlier_plot$data
+ind_outlier <- data_outlier_plot$color == "outlier"
+model_train_trim_1_clean <- train[ind_outlier == FALSE,]
+model_train_trim_1_outlier <- train[ind_outlier == TRUE,]
+
+```
+
+```{r}
+### Final Model
+final_model <- lm(Price~Carat+Clarity+Colour+Certification+0, data = model_train_trim_1_clean)
+
+```
+
+# Cross Validation
+
+Cross validation is a method that uses training data to provide multiple estimates of model performance. When trying different model types on data, it is important to study their performance profile to help decide which model type performs consistently well.
+
+## Method 1: Validation set Approach
+
+The validation set approach consists of randomly splitting the data into two sets: one set is used to train the model and the remaining other set sis used to test the model.
+
+### Training and Testing Dataset
+
+For cross validation, we will first create training and testing data-set
+
+Training data is used for model fitting
+
+Testing data is used for model evaluation
+
+
+We will split our trimmed data based on 75/25 split first.
+
+```{r, include=FALSE, echo=FALSE, message=FALSE}
+data_split_train<- initial_split(model_train_trim_1_clean, prop=0.75, strata = Price)
+
+data_train<- data_split_train%>%training()
+data_test<-data_split_train%>%testing()
+
+```
+
+
+We will now model again based on the training data set we have just created.
+```{r, include=FALSE, echo=FALSE, message=FALSE}
+##Model Fitting based on train data set
+lm_model<- linear_reg()%>%set_engine("lm")%>%set_mode("regression")
+lm_fit<- lm_model%>%fit(Price~Carat+Clarity+Colour+Certification+0, data=data_train)
+```
+
+ Following is the summary of the model based on training data set:
+
+```{r}
+
+tidy(lm_fit)
+
+```
+
+Now we will predict based on testing data set based on our model.
+
+```{r, include=FALSE, echo=FALSE, message=FALSE}
+Price_prediction<- lm_fit%>%predict(new_data= data_test)
+
+```
+
+Comparing our model based prediction and actual data, we get the following results. We assess the model performance by RMSE metric after that.
+
+```{r, echo=FALSE, message=FALSE}
+
+test_result<- data_test%>%
+  select(Price)%>%
+  bind_cols(Price_prediction)
+
+test_result
+
+
+  test_result%>% 
+  rmse(truth=Price,estimate=.pred) #RMSE
+
+
+```
+
+We can see that the standard error in our model relative to actual value is price of 143 approximately.
+
+The R squared or error plot can be also shown as following:
+
+```{r, echo=FALSE, message=FALSE}
+
+ggplot(test_result,aes(x=Price,y=.pred))+geom_point()+geom_abline(color="blue",linetype=2)+labs(title = "R-squared plot", y= "Predicted Price",x="Actual Price")
+
+```
+
+## Method 2: Leave one out cross validation - LOOCV
+
+This method works as follow:
+
+Leave out one data point and build the model on the rest of the data set
+Test the model against the data point that is left out at step 1 and record the test error associated with the prediction
+Repeat the process for all data points
+Compute the overall prediction error by taking the average of all these test error estimates recorded at step 2
+
+```{r, include=FALSE, echo=FALSE, message=FALSE}
+# Define training control
+train.control <- trainControl(method = "LOOCV")
+
+model_train_trim_1_clean<- na.exclude(model_train_trim_1_clean)
+
+# Train the model
+
+
+model_loocv <- train(Price~Carat+Clarity+Colour+Certification+0, data = model_train_trim_1_clean, method = "lm", trControl = train.control)
+
+```
+
+```{r}
+# Summarize the results
+print(model_loocv)
+```
+
+
+## Method 3: K-fold Corss Validation
+
+The k-fold cross-validation method evaluates the model performance on different subset of the training data and then calculate the average prediction error rate. The algorithm is as follow:
+
+Randomly split the data set into k-subsets (or k-fold) 
+Reserve one subset and train the model on all other subsets
+Test the model on the reserved subset and record the prediction error
+Repeat this process until each of the k subsets has served as the test set.
+Compute the average of the k recorded errors. This is called the cross-validation error serving as the performance metric for the model.
+
+
+As a rule of thumb, we will use number of folds, v=10
+
+
+```{r,include=FALSE, echo=FALSE, message=FALSE}
+set.seed(1000)
+
+# Define training control
+train.control <- trainControl(method = "cv", number = 10)
+# Train the model
+model_kfold <- train(Price~Carat+Clarity+Colour+Certification+0, data = model_train_trim_1_clean, method = "lm", trControl = train.control)
+
+```
+
+```{r}
+# Summarize the results
+print(model_kfold)
+```
+
+So, by "Cross-Validation" by three models we have got the following results for RMSE:
+
+* Method 1: Validation set Approach: 124
+
+* Method 2: Leave one out cross validation - LOOCV: 144
+
+* Method 3: K-fold Cross Validation: 146
+
+
+
+
+
+# Bootstrap Resampling Method
+
+Bootstrap resampling consists of repeatedly selecting a sample of n observations from the original data set, and to evaluate the model on each copy. An average standard error is then calculated and the results provide an indication of the overall variance of the model performance.
+
+We will use 100 resamples to test this model
+
+```{r, include=FALSE, echo=FALSE, message=FALSE}
+# Define training control
+train.control <- trainControl(method = "boot", number = 100)
+# Train the model
+model_boot <- train(Price~Carat+Clarity+Colour+Certification+0, data = model_train_trim_1_clean, method = "lm", trControl = train.control)
+```
+
+```{r}
+# Summarize the results
+print(model_boot)
+```
+
+
+Based on bootstrap resampling method the model RMSE is 153
