@@ -1,6 +1,6 @@
-# Business-Analytics-MBA6636
 
-## Assignment A03: Resampling Methods
+
+## Submitted by Kamrul Arefin
 
 2 files attaches:
 
