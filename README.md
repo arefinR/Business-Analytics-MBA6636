@@ -1,4 +1,5 @@
-# Business-Analytics-MBA663 assignment-3 by Kamrul Arefin
+# Assignment A03: Resampling Methods by Kamrul Arefin
+
 2 files attaches:
 
 CV and bootstrapping on Regression Model (RMD) 
