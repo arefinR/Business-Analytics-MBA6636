@@ -1,6 +1,6 @@
 
 
-## Submitted by Kamrul Arefin
+## Assignment A03: Resampling Methods
 
 2 files attaches:
 
