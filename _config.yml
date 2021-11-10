@@ -2,7 +2,7 @@ theme: jekyll-theme-leap-day
 
 title: Business Analytics MBA6636
 description: Assignment A03-Resampling Methods
-show_downloads:true
+show_downloads: 'true'
 
 
 
