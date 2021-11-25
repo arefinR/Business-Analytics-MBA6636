@@ -1,7 +1,7 @@
 ---
 title: "Assignment-04"
 author: "kamrul Arefin"
-date: "11/22/2021"
+date: "11/25/2021"
 output: html_document
 ---
 
@@ -12,6 +12,7 @@ library(ranger)
 library(caret)
 library(dplyr)
 library(tidyr)
+library(yardstick)
 ```
 
 
@@ -36,15 +37,7 @@ test_data<-  read.csv("titanic_test.csv",header = TRUE)
 
 * As age had many missing values we replaced the missing values by average age of the sample test data
 
-* We changed the name of the sample test data by the prefix as following:
-
-
-* Master
-* Mr
-* Miss
-* Mrs
-* Sir
-
+* We changed the name of the sample test data by the prefix as following: Master, Mr, Miss, Mrs, Sir
 
 * Female had more probability of survival compared to male
 
@@ -107,7 +100,7 @@ First we change the Name column in both dataset by the prefix:
 * Mrs
 * Sir
 
-```{r, echo=FALSE}
+```{r}
 train_data$Name[grep('Master.', train_data$Name, fixed=TRUE)] = 'Master'#I need to add fixed =True, else the Mrs it will be overwrite with Mr
 train_data$Name[grep('Mr.', train_data$Name, fixed=TRUE)] = 'Mr'
 train_data$Name[grep('Miss.|Mlle', train_data$Name)] = 'Miss'
@@ -125,7 +118,7 @@ test_data$Name[grep("Dr.|Col.|Rev.|Capt.|Major.|Sir.|Don.|Jonkheer", test_data$N
 
 We will replace age group that has missing value , with average age of the sample train data
 
-```{r, echo=FALSE}
+```{r}
 
 mean.age <- as.numeric(test_data %>% summarise(m.age=mean(Age, na.rm = T)))
 
@@ -145,7 +138,7 @@ train_data <- train_data %>%
 
 We will also replace Fare that has missing value , with average Fare of the sample train data
 
-```{r, echo=FALSE}
+```{r}
 mean.fare <- as.numeric(test_data %>% summarise(m.fare=mean(Fare, na.rm = T)))
 
 
@@ -201,7 +194,7 @@ qplot(factor(Pclass), Fare, data = train_data, geom = "boxplot")
 
 We will transform fare into logarithm scale
 
-```{r,echo=FALSE}
+```{r}
 
 # transform fare into logaritmic scale
 train_data$Fare <- log10(train_data$Fare+1)
@@ -213,7 +206,7 @@ test_data$Fare <- log10(test_data$Fare+1)
 
 We will also normalize the numerical data: Age and Fare
 
-```{r,echo=FALSE}
+```{r}
 # normalise with training data mean and standard deviation
 
 training.start = 178
@@ -260,7 +253,7 @@ We can see:
 As ticket code in test data is different, we will mark similar tickets with similar codes: 1,2,3
 
 
-```{r,echo=FALSE}
+```{r}
 
 
 train_data$Ticket[grep('^1|^57|^69|^68|^P', train_data$Ticket)] <- 1
@@ -310,7 +303,7 @@ A random forest is an ensemble of decision trees which will output a prediction 
 
 Here is the specification of the random forest model we will be using:
 
-```{r, echo=FALSE} 
+```{r} 
 #random Forest Specifications
 
 spec <- rand_forest(mtry= 7, trees= 2000,min_n = 10  ) %>%
@@ -324,7 +317,7 @@ spec
 
 We run random forest model based on titanic train data. Following is the model:
 
-```{r,echo=FALSE}
+```{r}
 
 #train
 
@@ -376,7 +369,7 @@ Following is the confusion matrix with in sample data
 
 ```{r, echo=FALSE, warning=FALSE}
 
-library(yardstick)
+
 conf_mat(data= pred_combined, estimate= .pred_class, truth= true_class )
 
 ```
