@@ -1,0 +1,441 @@
+---
+title: "Assignment-04"
+author: "kamrul Arefin"
+date: "11/22/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+library(parsnip)
+library(vip)
+library(ranger)
+library(caret)
+library(dplyr)
+library(tidyr)
+```
+
+
+
+
+```{r, echo=FALSE}
+#Data
+
+train_data<- read.csv("titanic_train.csv",header = TRUE)
+test_data<-  read.csv("titanic_test.csv",header = TRUE)
+
+
+```
+
+
+# Survival prediction on the Titanic disaster using R
+
+
+
+
+## Executive Summary
+
+* As age had many missing values we replaced the missing values by average age of the sample test data
+
+* We changed the name of the sample test data by the prefix as following:
+
+
+* Master
+* Mr
+* Miss
+* Mrs
+* Sir
+
+
+* Female had more probability of survival compared to male
+
+* Mr. or men had the most non-survivability among all age group and sex group
+
+* Class-1 and class-2 people had more probability to survive than class-3. Within class people from age range of 30-40 had more survival
+
+* Female within the class-1 had the most probability to survive
+
+* Mr or men from class 3 had the highest non survival probability
+
+* Name, Fare and Age are the best predictor of survivability
+
+* Based on our Random Forest model in sample prediction had 93% accuracy and 87% specifcity
+
+* We predicted the survivability with our Random Forest model at the end based on test data provided
+
+
+
+
+
+## Data Cleaning, Exploration and Feature Engineering
+
+
+
+### Variables
+
+* survival, Survival 0 = No, 1 = Yes
+* pclass, Ticket class 1 = 1st, 2 = 2nd, 3 = 3rd
+* sex, Sex
+* Age, Age in years
+* sibsp, # of siblings / spouses aboard the Titanic
+* parch, # of parents / children aboard the Titanic
+* ticket, Ticket number
+* fare, Passenger fare
+* cabin, Cabin number
+* embarked, Port of Embarkation C = Cherbourg, Q = Queenstown, S = Southampton
+
+
+
+Age has missing values
+
+```{r, echo=FALSE}
+
+# Data with missing values
+
+sum(is.na(train_data))
+colSums(is.na(train_data))
+
+```
+
+
+
+
+First we change the Name column in both dataset by the prefix:
+
+* Master
+* Mr
+* Miss
+* Mrs
+* Sir
+
+```{r, echo=FALSE}
+train_data$Name[grep('Master.', train_data$Name, fixed=TRUE)] = 'Master'#I need to add fixed =True, else the Mrs it will be overwrite with Mr
+train_data$Name[grep('Mr.', train_data$Name, fixed=TRUE)] = 'Mr'
+train_data$Name[grep('Miss.|Mlle', train_data$Name)] = 'Miss'
+train_data$Name[grep('Mrs.|Mme.|Ms.|Lady.|Countess.', train_data$Name)] = 'Mrs'
+train_data$Name[grep("Dr.|Col.|Rev.|Capt.|Major.|Sir.|Don.|Jonkheer", train_data$Name)] = 'Sir'
+
+
+test_data$Name[grep('Master.', test_data$Name, fixed=TRUE)] = 'Master'#I need to add fixed =True, else the Mrs it will be overwrite with Mr
+test_data$Name[grep('Mr.', test_data$Name, fixed=TRUE)] = 'Mr'
+test_data$Name[grep('Miss.|Mlle', test_data$Name)] = 'Miss'
+test_data$Name[grep('Mrs.|Mme.|Ms.|Lady.|Countess.', test_data$Name)] = 'Mrs'
+test_data$Name[grep("Dr.|Col.|Rev.|Capt.|Major.|Sir.|Don.|Jonkheer", test_data$Name)] = 'Sir'
+```
+
+
+We will replace age group that has missing value , with average age of the sample train data
+
+```{r, echo=FALSE}
+
+mean.age <- as.numeric(test_data %>% summarise(m.age=mean(Age, na.rm = T)))
+
+
+test_data <- test_data %>% 
+  mutate(Age = coalesce(Age, mean.age))
+
+
+mean.age1 <- as.numeric(train_data %>% summarise(m.age1=mean(Age, na.rm = T)))
+
+
+train_data <- train_data %>% 
+  mutate(Age = coalesce(Age, mean.age1))
+
+```
+
+
+We will also replace Fare that has missing value , with average Fare of the sample train data
+
+```{r, echo=FALSE}
+mean.fare <- as.numeric(test_data %>% summarise(m.fare=mean(Fare, na.rm = T)))
+
+
+test_data <- test_data %>% 
+  mutate(Fare = coalesce(Fare, mean.fare))
+
+
+
+```
+
+
+
+
+We will see relation between sex and survivability. We see that female had way more probability to survive than men.
+
+
+```{r, echo=FALSE}
+
+qplot(factor(Sex), data=train_data, geom="bar", fill=factor(Survived))
+
+```
+
+
+Next, we can see that class has a relation with survival. Class-1 had the most survival probability.
+
+
+```{r,echo=FALSE}
+
+qplot(factor(Pclass), data=train_data, geom="bar", fill=factor(Survived))
+
+
+```
+
+As class is related to survival, we can also see that, age is also related to survival as from the below box plot we can see that most people survived were in the age range of 30-40 in relation to class.
+
+
+```{r,echo=FALSE}
+
+qplot(factor(Pclass), Age, data = train_data, geom = "boxplot")
+
+
+```
+
+From the below box plot we can see fare is definitely related to survival probability. High fare passengers had the best possibility to survive because it has positive relation with class.
+
+```{r,echo=FALSE}
+
+qplot(factor(Pclass), Fare, data = train_data, geom = "boxplot")
+
+
+```
+
+
+We will transform fare into logarithm scale
+
+```{r,echo=FALSE}
+
+# transform fare into logaritmic scale
+train_data$Fare <- log10(train_data$Fare+1)
+test_data$Fare <- log10(test_data$Fare+1)
+
+
+```
+
+
+We will also normalize the numerical data: Age and Fare
+
+```{r,echo=FALSE}
+# normalise with training data mean and standard deviation
+
+training.start = 178
+training.stop = 891
+
+train.data.num <- train_data %>% select(Age,Fare)
+test.data.num <- test_data %>% select(Age,Fare)
+
+mean.df <- apply(train.data.num[training.start:training.stop,],2, mean, na.rm=T)
+std.df <-  apply(train.data.num[training.start:training.stop,],2, sd, na.rm=T)
+
+train.data.num <- scale(train.data.num, center = mean.df, scale = std.df)
+test.data.num <- scale(test.data.num, center = mean.df, scale = std.df)
+
+```
+
+
+we saw the relation between Age and survivability. But what about how Name variable is represented into the traveled classes and survivability?   
+
+```{r,echo=FALSE, warning=FALSE}
+
+table(train_data$Pclass, train_data$Name,train_data$Survived)
+
+ggplot(train_data, aes(Name, Pclass)) + geom_bar(stat = 'identity') + facet_grid(Survived~Pclass) +ylim(0, 300)
+
+
+```
+
+We can see:
+
+*  Mr or men from class 3 had the highest non survival
+  
+*  The Miss Mr and Mrs had a very high chance of surviving if they were located at the first class 1. Also at class 2.
+
+* Class 3 had the most non-survivability
+
+* Mr. or men had the most non-survivability among all age group and sex group
+
+
+
+
+
+
+As ticket code in test data is different, we will mark similar tickets with similar codes: 1,2,3
+
+
+```{r,echo=FALSE}
+
+
+train_data$Ticket[grep('^1|^57|^69|^68|^P', train_data$Ticket)] <- 1
+train_data$Ticket[grep('^2|^SW|^SO|^SC|^S.W|^S.P|^S.O|^S.C|^F', train_data$Ticket)] <- 2
+train_data$Ticket[grep('^3|^C|^26|^4|^54|^65|^7|^8|^9|^A|LINE|SOTON|STON|^W|^160|^14|^LP', train_data$Ticket)] <- 3
+
+test_data$Ticket[grep('^1|^57|^69|^68|^P', test_data$Ticket)] <- 1
+test_data$Ticket[grep('^2|^SW|^SO|^SC|^S.W|^S.P|^S.O|^S.C|^F', test_data$Ticket)] <- 2
+test_data$Ticket[grep('^3|^C|^26|^4|^54|^65|^7|^8|^9|^A|LINE|SOTON|STON|^W|^160|^14|^LP', test_data$Ticket)] <- 3
+
+
+```
+
+
+
+
+```{r,echo=FALSE, include=FALSE}
+
+
+train_data$Sex <- as.factor(train_data$Sex)
+train_data$Sex <- as.factor(train_data$Embarked)
+train_data$Sex <- as.factor(train_data$Parch)
+train_data$Sex <- as.factor(train_data$SibSp)
+train_data$Sex <- as.factor(train_data$Pclass)
+
+test_data$Sex <- as.factor(test_data$Sex)
+test_data$Sex <- as.factor(test_data$Embarked)
+test_data$Sex <- as.factor(test_data$Parch)
+test_data$Sex <- as.factor(test_data$SibSp)
+test_data$Sex <- as.factor(test_data$Pclass)
+
+
+
+
+```
+
+
+PassengerId is just a chronological numbering of the passengers. So we will omit this variable. Also as we are taking Fare as a variable, so we can omit Cabin.
+
+
+
+
+# Random Forest
+
+A random forest is an ensemble of decision trees which will output a prediction value, in this case survival. Each decision tree is constructed by using a random subset of the training data. 
+
+
+Here is the specification of the random forest model we will be using:
+
+```{r, echo=FALSE} 
+#random Forest Specifications
+
+spec <- rand_forest(mtry= 7, trees= 2000,min_n = 10  ) %>%
+	set_mode("classification") %>%
+    set_engine("ranger", importance = "impurity")
+
+spec
+
+```
+
+
+We run random forest model based on titanic train data. Following is the model:
+
+```{r,echo=FALSE}
+
+#train
+
+train_data$Survived <- as.factor(train_data$Survived)
+
+model <- spec %>%
+    fit(Survived ~ Pclass+Name+Sex+Age+SibSp+Parch+Ticket+Fare+Embarked, 
+        data = train_data)
+
+model
+
+
+```
+
+Based on the random forest following chart depicts the variable importance. Folloiwng 3 are the most important variables for survivability:
+
+* Name
+* Fare
+* Age
+
+```{r, echo=FALSE}
+
+vip(model)
+
+```
+
+
+# In-Sample Performance of the Model
+
+We will first build a model for in sample data and test the model.
+
+```{r, echo=FALSE}
+
+## give some in sample measures to test the accuracy and then give the final prediction by testing data
+
+r<- predict(model, new_data = train_data, type= "class")
+r
+
+pred_combined<- r%>%
+  mutate(true_class=train_data$Survived )
+
+
+```
+
+
+## Confusion Matrix
+
+Following is the confusion matrix with in sample data
+
+```{r, echo=FALSE, warning=FALSE}
+
+library(yardstick)
+conf_mat(data= pred_combined, estimate= .pred_class, truth= true_class )
+
+```
+
+
+## Accuracy
+
+We can see the accuracy of prediction by in sample data is 93% approximately
+
+```{r, echo=FALSE}
+accuracy(data= pred_combined, estimate= .pred_class, truth= true_class )
+
+```
+
+
+## Specificity
+
+We can see that our model classified 88% negative outcome correctly 
+
+```{r, echo=FALSE}
+spec(data= pred_combined, estimate= .pred_class, truth= true_class )
+
+```
+
+
+## ROC
+
+By the following ROC curve of the model we can see that the prediction of the model is high for in sample data
+
+```{r, echo=FALSE}
+
+# Predict probabilities on test set
+r1 <- predict(model, 
+                       train_data,
+                       type = "prob")
+  # Add test set
+ pred_combined1<- r1%>%
+  mutate(true_class=train_data$Survived )
+ 
+
+
+# Calculate the ROC curve for all thresholds
+roc <- roc_curve(pred_combined1, 
+                 estimate = .pred_0, 
+                 truth = true_class)
+
+# Plot the ROC curve
+autoplot(roc)
+
+```
+
+
+
+So our prediction on test data based on our model is as following:
+
+```{r, echo=FALSE}
+
+Survivability_Prediction<- predict(model, new_data = test_data, type= "class")
+Survivability_Prediction
+
+
+```
