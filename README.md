@@ -3,8 +3,15 @@
 
 ### Assignment A03: Resampling Methods
 
-2 files attached:
+2 RMD files attached:
 
-CV and bootstrapping on Regression Model (RMD) 
+Classification Model_CVBOOTSTRAP_Assignment 03_Kamrul Arefin
 
-CV and bootstrapping on Classification Model (RMD)
+Regression Model_CVBOOTSTRAP_Assignment 03_Kamrul Arefin
+
+
+### Assignment A04: Tree Based Method
+
+1 RMD files attached:
+
+Tree based Method_Assignment A04_Kamrul Arefin
